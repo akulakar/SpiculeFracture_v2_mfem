@@ -1,0 +1,58 @@
+{
+  "Test_Name": "SpiculeFracture_newbuild_test_1",
+
+   "Output": {
+    "save_frequency": 1,
+    "format": "adios2",
+    "path": "../results"
+  },
+
+  "Mesh": {
+    "file": "../input/meshes/cylinder_crack_coarse-tet.mesh",
+    "order": 1,
+    "refinement_levels": 0
+  },
+
+  "Finite_Element": {
+    "order": 1,
+    "basis": "GaussLobatto",
+    "ordering": "byNODES",
+    "stress_order": 0
+  },
+
+  "Material": {
+    "youngs_modulus": 1.2e7,
+    "poisson_ratio": 0.35,
+    "fracture_toughness": 5.0e2,
+    "length_scale": 5.0e-1,
+    "K_epsilon": 1.0e-7
+  },
+
+  "Eigenstrain": {
+    "type": "uniform",
+    "swelling_coefficient": 0.0,
+    "Delta_concentration": -1.0e-2
+  },
+
+  "Boundary_Conditions": {
+    "dirichlet_attributes": [
+      { "attributes": [0], "components": [2], "value": 0.0 },
+      { "attributes": [1], "components": [2], "value": "nonzero_displacement" }
+    ],
+    "nonzero_displacement": {
+      "final_displacement": 8.0e-2,
+      "min_increment": 5.0e-3,
+      "max_increment": 1.0e-2
+    }
+  },
+
+  "Staggered_Solve": {
+    "tolerance": 1.0e-6,
+    "max_iterations": 3000
+  },
+  
+  "Solvers": {
+    "elasticity_solver": { "type": "pcg", "tolerance": 1.0e-6, "max_iter": 1000, "preconditioner": "amg_systems" },
+    "damage_solver": { "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 1000, "preconditioner": "amg" }
+  }
+}
