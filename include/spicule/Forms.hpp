@@ -27,7 +27,7 @@ namespace spicule
 
         std::unique_ptr<mfem::ParBilinearForm> kdisp_, kdmg1_, kdmg2_;
         std::unique_ptr<mfem::ParLinearForm> fdisp_, fdmg_;
-        std::unique_ptr<mfem::HypreParMatrix> Kdmg1Mat_;
+        std::unique_ptr<mfem::HypreParMatrix> Kdmg1Mat_, Kdmg2Mat_;
 
     public:
         Forms(const Config &config, FESpaces &fe_spaces, Fields &fields) : fe_spaces_(fe_spaces), fields_(fields),
@@ -39,8 +39,11 @@ namespace spicule
         void AddIntegrators(const Config &config);
         // Assembles Kdisp and fdisp for the current dtemp and forms the lifted linear system
         // for utemp (essential values must already be in utemp).
+        // with vector class
         void AssembleDisplacement(const mfem::Array<int> &essTdofs, mfem::OperatorHandle &A, mfem::Vector &X, mfem::Vector &B);
         void RecoverDisplacement(const mfem::Vector &X);
+        // withe hypre par matrix
+        void AssembleDisplacement(const mfem::Array<int> &essTdofs, mfem::HypreParMatrix &K, mfem::Vector &X, mfem::Vector &B);
 
         // Kdmg1 + Kdmg2(utemp) and fdmg(utemp). Caller owns the results.
         std::unique_ptr<mfem::HypreParMatrix> AssembleDamageMatrix();

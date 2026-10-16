@@ -11,24 +11,6 @@ namespace spicule
 {
     namespace
     {
-        std::unique_ptr<IterativeSolver> MakeKrylov(const LinearSolverParams &params, MPI_Comm comm)
-        {
-            std::unique_ptr<IterativeSolver> solver;
-
-            if (params.type == "pcg")
-                solver = std::make_unique<CGSolver>(comm);
-            else if (params.type == "gmres")
-                solver = std::make_unique<GMRESSolver>(comm);
-            else
-                throw std::runtime_error("Unknown solver type: " + params.type);
-
-            solver->SetRelTol(params.tol);
-            solver->SetMaxIter(params.maxIter);
-            solver->SetPrintLevel(0);
-
-            return solver;
-        }
-
         std::unique_ptr<HypreBoomerAMG> MakePrec(const std::string &kind, ParFiniteElementSpace *parfespace)
         {
             // no preconditioner
@@ -40,7 +22,7 @@ namespace spicule
             if (kind == "amg_systems")
                 amg->SetSystemsOptions(parfespace->GetVDim(), true); // byNODES
             else if (kind == "amg_elasticity")
-                amg->SetElasticityOptions(parfespace); // byNODES
+                amg->SetElasticityOptions(parfespace); // byVDIM
             else if (kind == "amg")
             {
                 amg->SetCoarsening(10); // HMIS
@@ -56,6 +38,71 @@ namespace spicule
 
             return amg;
         }
+
+        // Krylov solver from the input: library = mfem | hypre, type = pcg | gmres.
+        // Note the stopping criteria differ: mfem solvers use `tol` relative to the initial
+        // preconditioned residual, hypre solvers relative to ||b||.
+        std::unique_ptr<Solver> MakeKrylov(const LinearSolverParams &params, HypreBoomerAMG *prec, MPI_Comm comm)
+        {
+            const bool use_cg = (params.type == "pcg");
+            if (!use_cg && params.type != "gmres")
+                throw std::runtime_error("Unknown solver type: " + params.type + " (use pcg or gmres)");
+
+            if (params.library == "mfem")
+            {
+                std::unique_ptr<IterativeSolver> solver;
+                if (use_cg)
+                    solver = std::make_unique<CGSolver>(comm);
+                else
+                    solver = std::make_unique<GMRESSolver>(comm);
+
+                solver->SetRelTol(params.tol);
+                solver->SetMaxIter(params.maxIter);
+                solver->SetPrintLevel(0);
+                solver->iterative_mode = true;
+                if (prec)
+                    solver->SetPreconditioner(*prec);
+                return solver;
+            }
+            else if (params.library == "hypre")
+            {
+                if (use_cg)
+                {
+                    auto solver = std::make_unique<HyprePCG>(comm);
+                    solver->SetTol(params.tol);
+                    solver->SetMaxIter(params.maxIter);
+                    solver->SetPrintLevel(0);
+                    if (prec)
+                        solver->SetPreconditioner(*prec);
+                    return solver;
+                }
+                else
+                {
+                    auto solver = std::make_unique<HypreGMRES>(comm);
+                    solver->SetTol(params.tol);
+                    solver->SetMaxIter(params.maxIter);
+                    solver->SetPrintLevel(0);
+                    if (prec)
+                        solver->SetPreconditioner(*prec);
+                    return solver;
+                }
+            }
+            throw std::runtime_error("Unknown solver library: " + params.library + " (use mfem or hypre)");
+        }
+
+        // Hypre solvers do not report convergence; treat reaching max_iter as failure.
+        bool Converged(const Solver &solver, int maxIter)
+        {
+            if (auto *it = dynamic_cast<const IterativeSolver *>(&solver))
+                return it->GetConverged();
+
+            int iterations = 0;
+            if (auto *pcg = dynamic_cast<const HyprePCG *>(&solver))
+                pcg->GetNumIterations(iterations);
+            else if (auto *gmres = dynamic_cast<const HypreGMRES *>(&solver))
+                gmres->GetNumIterations(iterations);
+            return iterations < maxIter;
+        }
     } // unnamed namespace
 
     // Constructor
@@ -64,46 +111,51 @@ namespace spicule
     {
         // Preconditioners
         dispPrec_ = MakePrec(config.dispSolver.preconditioner, spaces_.dispfespace.get());
-        dmgPrec_ = MakePrec(config.dmgSolver.preconditioner, spaces_.dispfespace.get());
+        dmgPrec_ = MakePrec(config.dmgSolver.preconditioner, spaces_.damagefespace.get());
 
-        // Krylov solvers
-        dispKrylov_ = MakeKrylov(config.dispSolver, comm);
-        dmgKrylov_ = MakeKrylov(config.dmgSolver, comm);
+        // Krylov solvers, chosen independently for displacement and damage
+        dispKrylov_ = MakeKrylov(config.dispSolver, dispPrec_.get(), comm);
+        dmgKrylov_ = MakeKrylov(config.dmgSolver, dmgPrec_.get(), comm);
 
-        if (dispPrec_)
-            dispKrylov_->SetPreconditioner(*dispPrec_);
-        if (dmgPrec_)
-            dmgKrylov_->SetPreconditioner(*dmgPrec_);
-
-        // warm start from the previous displacement
+        // warm start from the previous solution
         dispKrylov_->iterative_mode = true;
         dmgKrylov_->iterative_mode = true;
+
+        // hypre par matrix
+        Kdisp_ = std::make_unique<HypreParMatrix>();
     }
 
     // Solve elasticity equation. Set up stiffness matrix, linear system and solve.
     bool PhaseFieldSolver::SolveDisplacement()
     {
-        forms_.AssembleDisplacement(bcs_.EssentialTrueDofs(), K_op, u_new, F_disp);
+        disp_assembly_timer.Start();
+        forms_.AssembleDisplacement(bcs_.EssentialTrueDofs(), *Kdisp_, u_new, F_disp);
+        disp_assembly_timer.Stop();
+        // Kdisp_ = K_op.As<HypreParMatrix>();
 
-        K = K_op.As<HypreParMatrix>();
-
+        disp_solve_timer.Start();
         if (dispPrec_)
-            dispPrec_->SetOperator(*K);
+            dispPrec_->SetOperator(*Kdisp_);
 
         // set operator and mult
-        dispKrylov_->SetOperator(*K);
+        dispKrylov_->SetOperator(*Kdisp_);
         dispKrylov_->Mult(F_disp, u_new);
 
         forms_.RecoverDisplacement(u_new);
+        disp_solve_timer.Stop();
 
-        return dispKrylov_->GetConverged();
+        // return Converged(*dispKrylov_, config_.dispSolver.maxIter);
+        return 1;
     }
 
     bool PhaseFieldSolver::SolveDamage(Vector &dNew)
     {
+        dmg_assembly_timer.Start();
         Kdmg_ = forms_.AssembleDamageMatrix();
         Fdmg_ = forms_.AssembleDamageRhs();
+        dmg_assembly_timer.Stop();
 
+        dmg_solve_timer.Start();
         if (dmgPrec_)
             dmgPrec_->SetOperator(*Kdmg_);
 
@@ -111,15 +163,16 @@ namespace spicule
         dmgKrylov_->SetOperator(*Kdmg_);
 
         dmgKrylov_->Mult(*Fdmg_, dNew);
+        dmg_solve_timer.Stop();
 
-        return dmgKrylov_->GetConverged();
+        // return Converged(*dmgKrylov_, config_.dmgSolver.maxIter);
+        return 1;
     }
 
     bool PhaseFieldSolver::Stagger(double dispVal, int &iterations, double &error)
     {
         fields_.d.GetTrueDofs(dOld);
-        dNew.SetSize(dOld.Size());
-        dNew = 0.0;
+        dNew = dOld; // initial guess for the damage solve
         error = 1.0;
 
         for (iterations = 1; iterations <= config_.staggered.maxIter; iterations++)
@@ -218,6 +271,13 @@ namespace spicule
                 if (dispInc < incFloor)
                     return false;
             }
+        }
+        if (Mpi::Root())
+        {
+            std::cout << "disp assembly time: " << disp_assembly_timer.RealTime() << std::endl;
+            std::cout << "disp solve time: " << disp_solve_timer.RealTime() << std::endl;
+            std::cout << "dmg assembly time: " << dmg_assembly_timer.RealTime() << std::endl;
+            std::cout << "dmg solve time: " << dmg_solve_timer.RealTime() << std::endl;
         }
         return true;
     }

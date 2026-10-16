@@ -16,7 +16,7 @@
   "Finite_Element": {
     "order": 1,
     "basis": "GaussLobatto",
-    "ordering": "byNODES",
+    "ordering": "byVDIM",
     "stress_order": 0
   },
 
@@ -52,7 +52,7 @@
   },
   
   "Solvers": {
-    "elasticity_solver": { "type": "pcg", "tolerance": 1.0e-6, "max_iter": 1000, "preconditioner": "amg_systems" },
-    "damage_solver": { "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 1000, "preconditioner": "amg" }
+    "elasticity_solver": { "library": "mfem", "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 750, "preconditioner": "amg_elasticity" },
+    "damage_solver": { "library": "mfem", "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 750, "preconditioner": "amg" }
   }
 }

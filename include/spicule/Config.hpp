@@ -58,7 +58,8 @@ namespace spicule
 
     struct LinearSolverParams
     {
-        std::string type = "pcg"; // pcg or gmres
+        std::string library = "mfem"; // mfem, hypre, petsc
+        std::string type = "pcg";     // pcg or gmres
         std::string preconditioner = "amg";
         double tol = 1e-6;
         int maxIter = 300;

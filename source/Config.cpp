@@ -112,12 +112,14 @@ namespace spicule
 
         // linear solver settings
         // elasticity (disp) solver
+        config.dispSolver.library = GetOr<std::string>(input, "Solvers", "elasticity_solver", "library", "mfem");
         config.dispSolver.type = GetOr<std::string>(input, "Solvers", "elasticity_solver", "type", "pcg");
         config.dispSolver.preconditioner = GetOr<std::string>(input, "Solvers", "elasticity_solver", "preconditioner", "amg_systems");
         config.dispSolver.tol = GetOr(input, "Solvers", "elasticity_solver", "tolerance", 1.0e-6);
         config.dispSolver.maxIter = GetOr(input, "Solvers", "elasticity_solver", "max_iterations", 1000);
 
         // damage solver
+        config.dmgSolver.library = GetOr<std::string>(input, "Solvers", "damage_solver", "library", "mfem");
         config.dmgSolver.type = GetOr<std::string>(input, "Solvers", "damage_solver", "type", "pcg");
         config.dmgSolver.preconditioner = GetOr<std::string>(input, "Solvers", "damage_solver", "preconditioner", "amg");
         config.dmgSolver.tol = GetOr(input, "Solvers", "damage_solver", "tolerance", 1.0e-6);

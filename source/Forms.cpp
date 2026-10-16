@@ -51,6 +51,17 @@ namespace spicule
         kdisp_->FormLinearSystem(essTdofs, fields_.utemp, *fdisp_, A, X, B);
     }
 
+    void Forms::AssembleDisplacement(const Array<int> &essTdofs, HypreParMatrix &K, Vector &X, Vector &B)
+    {
+        kdisp_->Update();
+        kdisp_->Assemble(0);
+        kdisp_->Finalize(0);
+
+        fdisp_->Assemble();
+        // Boundary conditions need to be projected on utemp
+        kdisp_->FormLinearSystem(essTdofs, fields_.utemp, *fdisp_, K, X, B);
+    }
+
     void Forms::RecoverDisplacement(const Vector &X)
     {
         kdisp_->RecoverFEMSolution(X, *fdisp_, fields_.utemp);
@@ -61,8 +72,8 @@ namespace spicule
         kdmg2_->Update();
         kdmg2_->Assemble(0);
         kdmg2_->Finalize(0);
-        std::unique_ptr<HypreParMatrix> K2(kdmg2_->ParallelAssemble());
-        return std::unique_ptr<HypreParMatrix>(Add(1.0, *Kdmg1Mat_, 1.0, *K2));
+        Kdmg2Mat_.reset(kdmg2_->ParallelAssemble());
+        return std::unique_ptr<HypreParMatrix>(Add(1.0, *Kdmg1Mat_, 1.0, *Kdmg2Mat_));
     }
 
     std::unique_ptr<HypreParVector> Forms::AssembleDamageRhs()

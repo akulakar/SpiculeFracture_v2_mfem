@@ -14,6 +14,8 @@ namespace spicule
     class PhaseFieldSolver
     {
     private:
+        mfem::StopWatch disp_assembly_timer, dmg_assembly_timer, disp_solve_timer, dmg_solve_timer;
+
         const Config &config_;
         FESpaces &spaces_;
         Fields &fields_;
@@ -21,16 +23,17 @@ namespace spicule
         const BoundaryConditions &bcs_;
         MPI_Comm comm_;
 
-        // Persistent solvers
+        // Persistent solvers. Krylov solvers may be mfem (CG, GMRES) or hypre (PCG, GMRES), chosen
+        // independently for displacement and damage from the input.
         std::unique_ptr<mfem::HypreBoomerAMG> dispPrec_, dmgPrec_;
-        std::unique_ptr<mfem::IterativeSolver> dispKrylov_, dmgKrylov_;
+        std::unique_ptr<mfem::Solver> dispKrylov_, dmgKrylov_;
 
         // Operators are swapped each iteration
         std::unique_ptr<mfem::HypreParMatrix> Kdmg_;
         std::unique_ptr<mfem::HypreParVector> Fdmg_;
 
         // Elasticity
-        mfem::HypreParMatrix *K;
+        std::unique_ptr<mfem::HypreParMatrix> Kdisp_;
         mfem::OperatorHandle K_op;
         mfem::Vector u_new, F_disp;
 
