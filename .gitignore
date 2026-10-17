@@ -2,3 +2,4 @@ results
 .vscode
 build
 old_modules
+input/meshes/*_fine*
