@@ -10,7 +10,7 @@
   "Mesh": {
     "file": "../input/meshes/cylinder_crack_coarse-tet.mesh",
     "order": 1,
-    "refinement_levels": 0
+    "refinement_levels": 1
   },
 
   "Finite_Element": {
@@ -40,7 +40,7 @@
       { "attributes": [1], "components": [2], "value": "nonzero_displacement" }
     ],
     "nonzero_displacement": {
-      "final_displacement": 8.0e-2,
+      "final_displacement": 2.0e-2,
       "min_increment": 5.0e-3,
       "max_increment": 1.0e-2
     }
@@ -52,7 +52,7 @@
   },
   
   "Solvers": {
-    "elasticity_solver": { "library": "mfem", "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 750, "preconditioner": "amg_elasticity" },
-    "damage_solver": { "library": "mfem", "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 750, "preconditioner": "amg" }
+    "elasticity_solver": { "library": "hypre", "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 750, "preconditioner": "amg_elasticity" },
+    "damage_solver": { "library": "hypre", "type": "pcg", "tolerance": 1.0e-6, "max_iterations": 750, "preconditioner": "amg" }
   }
 }

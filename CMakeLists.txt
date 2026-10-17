@@ -2,7 +2,7 @@
 # SpiculeFracture_fem: MPI-parallel regularized variational fracture solver built on MFEM + mfemplus.
 #
 # Layout:
-#   include/spicule, source/   static library `spicule` (Config, Setup, Forms, solver, Output)
+#   include/spicule/           header-only classes: PhaseFieldSolver, BoundaryConditions, OutputWriter
 #   drivers/                   one executable per .cpp file, each linked against `spicule`
 #
 # Build:   cmake -S . -B build && cmake --build build
@@ -44,34 +44,24 @@ set(METIS_INCLUDE_DIR /opt/homebrew/opt/metis/include CACHE PATH "")
 set(METIS_LIBRARY /opt/homebrew/opt/metis/lib/libmetis.dylib CACHE FILEPATH "")
 
 # ---------------------------------------------------------------------------------------------------
-# Library: everything that is not a driver.
-# ---------------------------------------------------------------------------------------------------
-# Project sources; CONFIGURE_DEPENDS re-runs the glob when files are added or removed.
-file(GLOB SPICULE_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/source/*.cpp")
-
-add_library(spicule STATIC ${SPICULE_SOURCES})
-
-# PUBLIC so that drivers inherit the include paths.
-target_include_directories(spicule PUBLIC
-  ${CMAKE_SOURCE_DIR}/include   # spicule/*.hpp
-  ${METIS_INCLUDE_DIR}
-  /opt/homebrew/opt/nlohmann-json/include)  # <nlohmann/json.hpp>
-
-# mfemplus::fracture carries its own include root (<mfemplus/SolidMechanics/...>) and MFEM/MPI deps.
-target_link_libraries(spicule PUBLIC mfemplus::fracture mfem ${METIS_LIBRARY} ${MPI_CXX_LIBRARIES})
-
-if(SPICULE_USE_ADIOS2)
-  target_compile_definitions(spicule PUBLIC SPICULE_USE_ADIOS2)
-  target_link_libraries(spicule PUBLIC adios2::adios2)
-endif()
-
-# ---------------------------------------------------------------------------------------------------
 # Drivers: one executable per file in drivers/, named after the file.
+# The solver, boundary conditions and output classes are header-only (include/spicule/PhaseFieldFracture.hpp).
 # ---------------------------------------------------------------------------------------------------
 file(GLOB DRIVERS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/drivers/*.cpp")
 foreach(drv ${DRIVERS})
   get_filename_component(name ${drv} NAME_WE)
   add_executable(${name} ${drv})
-  target_link_libraries(${name} PRIVATE spicule)
+
+  target_include_directories(${name} PRIVATE
+    ${CMAKE_SOURCE_DIR}/include   # spicule/PhaseFieldFracture.hpp
+    ${METIS_INCLUDE_DIR}
+    /opt/homebrew/opt/nlohmann-json/include)  # <nlohmann/json.hpp>
+
+  # mfemplus::fracture carries its own include root (<mfemplus/SolidMechanics/...>) and MFEM/MPI deps.
+  target_link_libraries(${name} PRIVATE mfemplus::fracture mfem ${METIS_LIBRARY} ${MPI_CXX_LIBRARIES})
+  if(SPICULE_USE_ADIOS2)
+    target_link_libraries(${name} PRIVATE adios2::adios2)
+  endif()
+
   message(STATUS "Configured driver: ${name}")
 endforeach()
